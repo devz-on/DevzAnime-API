@@ -25,7 +25,10 @@ export const monthlyScheduleSchema = createRoute({
   path: '/schedule',
   request: {
     query: z.object({
-      date: z.string(),
+      date: z
+        .string()
+        .optional()
+        .openapi({ example: '21', description: 'Day of month (1-31). Defaults to current day.' }),
     }),
   },
   responses: {
