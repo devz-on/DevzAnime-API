@@ -1,9 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "installCommand": "npm install",
-  "buildCommand": "node -e \"console.log('No build step required for Hono API')\"",
-  "outputDirectory": "public",
   "cleanUrls": true,
   "rewrites": [
     {

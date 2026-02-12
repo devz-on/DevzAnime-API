@@ -36,8 +36,7 @@ NODEJS_HELPERS=0
 
 This repo includes:
 - `api/[...route].js` (Vercel Function entry)
-- `vercel.json` (runtime + routing settings)
-- `public/` (empty output directory placeholder for Vercel build expectations)
+- `vercel.json` (runtime + routing settings for serverless functions)
 
 1. Import the repo in Vercel.
 2. Set env vars (`ORIGIN`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LIMIT`, `NODEJS_HELPERS=0`).
