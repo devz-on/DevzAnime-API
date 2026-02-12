@@ -20,7 +20,6 @@
   ],
   "functions": {
     "api/[...route].js": {
-      "runtime": "nodejs20.x",
       "maxDuration": 60
     }
   }
