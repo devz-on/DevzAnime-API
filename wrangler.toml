@@ -1,0 +1,9 @@
+name = "hianime-api"
+main = "src/worker.js"
+compatibility_date = "2026-02-12"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ORIGIN = "*"
+RATE_LIMIT_WINDOW_MS = "60000"
+RATE_LIMIT_LIMIT = "100"

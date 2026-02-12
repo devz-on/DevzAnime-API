@@ -1,0 +1,78 @@
+# hianime-API
+
+Unofficial REST API for scraping anime data from hianime.
+
+## Runtime support
+
+- Node.js (local development)
+- Vercel Serverless Functions (free tier)
+- Cloudflare Workers (free tier)
+- Redis is optional and currently disabled in this branch
+
+## Local setup
+
+```bash
+npm install
+npm run dev
+```
+
+Local URLs:
+
+- API base: `http://localhost:3030/api/v1`
+- Docs: `http://localhost:3030/doc`
+
+## Environment variables
+
+Use `.env.example`:
+
+```env
+ORIGIN=*
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_LIMIT=100
+NODEJS_HELPERS=0
+```
+
+## Deploy on Vercel
+
+This repo includes `api/[...route].js` for Vercel Functions.
+
+1. Import the repo in Vercel.
+2. Install dependencies (`npm install`).
+3. Set env vars (`ORIGIN`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LIMIT`, `NODEJS_HELPERS=0`).
+4. Deploy.
+
+Vercel URLs:
+
+- API base: `https://<your-project>.vercel.app/api/v1`
+- Docs: `https://<your-project>.vercel.app/api/doc`
+- OpenAPI: `https://<your-project>.vercel.app/api/openapi.json`
+
+## Deploy on Cloudflare Workers
+
+This repo includes `src/worker.js` and `wrangler.toml`.
+
+1. Install dependencies: `npm install`
+2. Login: `npx wrangler login`
+3. Deploy: `npx wrangler deploy`
+
+Worker URLs:
+
+- API base: `https://<your-worker>.<subdomain>.workers.dev/api/v1`
+- Docs: `https://<your-worker>.<subdomain>.workers.dev/doc`
+
+Notes:
+
+- `wrangler.toml` uses `nodejs_compat` for npm compatibility.
+- If needed, update `ORIGIN` and rate-limit values in `[vars]`.
+
+## Main endpoints
+
+- `GET /api/v1/home`
+- `GET /api/v1/spotlight`
+- `GET /api/v1/topten`
+- `GET /api/v1/anime/{animeId}`
+- `GET /api/v1/search?keyword={query}&page={page}`
+- `GET /api/v1/search/suggestion?keyword={query}`
+- `GET /api/v1/episodes/{animeId}`
+- `GET /api/v1/servers?id={episodeId}`
+- `GET /api/v1/stream?id={episodeId}&server={server}&type={sub|dub}`
