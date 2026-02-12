@@ -12,11 +12,16 @@ configureDocs(app);
 
 app.options('/api/v1/proxy', proxyOptionsHandler);
 app.get('/api/v1/proxy', proxyHandler);
+app.options('/v1/proxy', proxyOptionsHandler);
+app.get('/v1/proxy', proxyHandler);
 
 // Compatibility aliases for clients that expect direct schedule routes.
 app.get('/api/v1/schedule', withTryCatch(monthlyScheduleHandler));
 app.get('/api/v1/schedule/next/:id', withTryCatch(nextEpScheduleHandler));
+app.get('/v1/schedule', withTryCatch(monthlyScheduleHandler));
+app.get('/v1/schedule/next/:id', withTryCatch(nextEpScheduleHandler));
 
 app.route('/api/v1', router);
+app.route('/v1', router);
 
 export default app;
