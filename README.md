@@ -34,12 +34,15 @@ NODEJS_HELPERS=0
 
 ## Deploy on Vercel
 
-This repo includes `api/[...route].js` for Vercel Functions.
+This repo includes:
+- `api/[...route].js` (Vercel Function entry)
+- `vercel.json` (runtime + routing settings)
 
 1. Import the repo in Vercel.
-2. Install dependencies (`npm install`).
-3. Set env vars (`ORIGIN`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LIMIT`, `NODEJS_HELPERS=0`).
-4. Deploy.
+2. Set env vars (`ORIGIN`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LIMIT`, `NODEJS_HELPERS=0`).
+3. Deploy.
+
+No manual framework preset/build preset tuning is required. Runtime and route behavior are declared in `vercel.json`.
 
 Vercel URLs:
 
