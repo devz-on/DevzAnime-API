@@ -27,6 +27,23 @@ function getRuntimeEnv() {
   };
 }
 
+function parseCorsOrigins(rawOrigin) {
+  if (!rawOrigin) {
+    return '*';
+  }
+
+  const parsed = String(rawOrigin)
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (!parsed.length || parsed.includes('*')) {
+    return '*';
+  }
+
+  return parsed;
+}
+
 export function createRouter() {
   return new OpenAPIHono({
     defaultHook: zodValidationHook,
@@ -36,7 +53,7 @@ export function createRouter() {
 
 export default function createApp() {
   const env = getRuntimeEnv();
-  const origins = env.ORIGIN ? env.ORIGIN.split(',') : '*';
+  const origins = parseCorsOrigins(env.ORIGIN);
 
   const corsConf = cors({
     origin: origins,
