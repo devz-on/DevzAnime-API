@@ -52,6 +52,10 @@ Vercel URLs:
 
 ## Deploy on Cloudflare Workers
 
+## Deploy To Cloudflare (Easy Way)
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/devz-on/DevzAnime-Api)
+
 This repo includes `src/worker.js` and `wrangler.toml`.
 
 1. Install dependencies: `npm install`
