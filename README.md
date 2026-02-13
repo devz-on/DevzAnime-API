@@ -32,26 +32,6 @@ RATE_LIMIT_LIMIT=100
 NODEJS_HELPERS=0
 ```
 
-## Deploy on Vercel
-
-This repo includes:
-- `api/[...route].js` (Vercel Function entry)
-- `vercel.json` (runtime + routing settings for serverless functions)
-
-1. Import the repo in Vercel.
-2. Set env vars (`ORIGIN`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LIMIT`, `NODEJS_HELPERS=0`).
-3. Deploy.
-
-No manual framework preset/build preset tuning is required. Runtime and route behavior are declared in `vercel.json`.
-
-Vercel URLs:
-
-- API base: `https://<your-project>.vercel.app/api/v1`
-- Docs: `https://<your-project>.vercel.app/api/doc`
-- OpenAPI: `https://<your-project>.vercel.app/api/openapi.json`
-
-## Deploy on Cloudflare Workers
-
 ## Deploy To Cloudflare (Easy Way)
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/devz-on/DevzAnime-Api)
@@ -71,6 +51,26 @@ Notes:
 
 - `wrangler.toml` uses `nodejs_compat` for npm compatibility.
 - If needed, update `ORIGIN` and rate-limit values in `[vars]`.
+
+  
+## Deploy on Vercel (Currently not available)
+
+This repo includes:
+- `api/[...route].js` (Vercel Function entry)
+- `vercel.json` (runtime + routing settings for serverless functions)
+
+1. Import the repo in Vercel.
+2. Set env vars (`ORIGIN`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LIMIT`, `NODEJS_HELPERS=0`).
+3. Deploy.
+
+No manual framework preset/build preset tuning is required. Runtime and route behavior are declared in `vercel.json`.
+
+Vercel URLs:
+
+- API base: `https://<your-project>.vercel.app/api/v1`
+- Docs: `https://<your-project>.vercel.app/api/doc`
+- OpenAPI: `https://<your-project>.vercel.app/api/openapi.json`
+
 
 ## Main endpoints
 
