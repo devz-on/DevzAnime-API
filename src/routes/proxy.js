@@ -47,12 +47,157 @@ function isManifestContentType(contentType) {
   );
 }
 
-function isVttUrl(url) {
+function getPathname(targetUrl) {
   try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    return pathname.endsWith('.vtt');
+    return new URL(targetUrl).pathname.toLowerCase();
   } catch {
-    return false;
+    return '';
+  }
+}
+
+function isVttUrl(url) {
+  return getPathname(url).endsWith('.vtt');
+}
+
+function getRuntimeEnv(c) {
+  const processEnv = typeof process !== 'undefined' && process?.env ? process.env : {};
+  const contextEnv = c?.env && typeof c.env === 'object' ? c.env : {};
+  const workerEnv =
+    typeof globalThis !== 'undefined' &&
+    globalThis.__APP_RUNTIME_ENV__ &&
+    typeof globalThis.__APP_RUNTIME_ENV__ === 'object'
+      ? globalThis.__APP_RUNTIME_ENV__
+      : {};
+
+  return {
+    ...processEnv,
+    ...workerEnv,
+    ...contextEnv,
+  };
+}
+
+function getEnvNumber(env, key, fallback, min = 0) {
+  const parsed = Number(env?.[key]);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, parsed);
+}
+
+function getProxyRuntimeConfig(c) {
+  const env = getRuntimeEnv(c);
+  const cacheModeRaw = String(env.PROXY_CACHE_MODE || 'bandwidth')
+    .trim()
+    .toLowerCase();
+  const cacheMode =
+    cacheModeRaw === 'off' || cacheModeRaw === 'conservative' || cacheModeRaw === 'bandwidth'
+      ? cacheModeRaw
+      : 'bandwidth';
+
+  return {
+    cacheMode,
+    timeoutMs: getEnvNumber(env, 'PROXY_TIMEOUT_MS', 10_000, 1_000),
+    retryCount: getEnvNumber(env, 'PROXY_RETRY_COUNT', 1, 0),
+  };
+}
+
+function getResourceType(targetUrl, contentType) {
+  const pathname = getPathname(targetUrl);
+  const typeValue = (contentType || '').toLowerCase();
+
+  if (pathname.endsWith('.m3u8') || isManifestContentType(typeValue)) {
+    return 'manifest';
+  }
+
+  if (
+    pathname.endsWith('.ts') ||
+    pathname.endsWith('.m4s') ||
+    pathname.endsWith('.mp4') ||
+    typeValue.startsWith('video/')
+  ) {
+    return 'segment';
+  }
+
+  if (pathname.endsWith('.vtt') || typeValue.includes('text/vtt')) {
+    return 'captions';
+  }
+
+  if (
+    pathname.endsWith('.jpg') ||
+    pathname.endsWith('.jpeg') ||
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.webp') ||
+    pathname.endsWith('.gif') ||
+    pathname.endsWith('.avif') ||
+    typeValue.startsWith('image/')
+  ) {
+    return 'image';
+  }
+
+  return 'other';
+}
+
+function resolveCacheControl(cacheMode, targetUrl, contentType, upstreamCacheControl) {
+  if (cacheMode === 'off') {
+    return upstreamCacheControl || null;
+  }
+
+  const resourceType = getResourceType(targetUrl, contentType);
+  if (cacheMode === 'conservative') {
+    if (resourceType === 'manifest') {
+      return 'public, max-age=4, s-maxage=4, stale-while-revalidate=12';
+    }
+    if (resourceType === 'segment') {
+      return 'public, max-age=3600, s-maxage=3600';
+    }
+    if (resourceType === 'captions' || resourceType === 'image') {
+      return 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=21600';
+    }
+    return upstreamCacheControl || 'public, max-age=60, s-maxage=60';
+  }
+
+  if (resourceType === 'manifest') {
+    return 'public, max-age=6, s-maxage=6, stale-while-revalidate=15';
+  }
+  if (resourceType === 'segment') {
+    return 'public, max-age=86400, s-maxage=86400, immutable';
+  }
+  if (resourceType === 'captions' || resourceType === 'image') {
+    return 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400';
+  }
+  return upstreamCacheControl || 'public, max-age=120, s-maxage=120';
+}
+
+function isRetryableStatus(status) {
+  return (
+    status === 204 ||
+    status === 403 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    status === 520 ||
+    status === 521 ||
+    status === 522 ||
+    status === 523 ||
+    status === 524 ||
+    status === 525 ||
+    status === 526
+  );
+}
+
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 
@@ -60,6 +205,8 @@ const proxyCorsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Range',
+  'Access-Control-Expose-Headers':
+    'Content-Type, Content-Length, Content-Range, Accept-Ranges, Cache-Control, ETag, Last-Modified',
   Vary: 'Origin',
 };
 const preferredAttemptByHost = new Map();
@@ -74,6 +221,59 @@ function attemptSignature(attempt) {
   return `${attempt.referer || 'none'}|${attempt.includeOrigin ? 'origin' : 'no-origin'}`;
 }
 
+async function fetchWithRedirects(url, headers, timeoutMs, maxRedirects = 5) {
+  let currentUrl = url;
+  let lastResponse = null;
+
+  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+    const response = await fetchWithTimeout(
+      currentUrl,
+      {
+        method: 'GET',
+        headers,
+        redirect: 'manual',
+      },
+      timeoutMs
+    );
+
+    lastResponse = response;
+    if (response.status < 300 || response.status >= 400) {
+      return response;
+    }
+
+    const location = response.headers.get('location');
+    if (!location) {
+      return response;
+    }
+
+    currentUrl = toAbsoluteUrl(location, currentUrl);
+  }
+
+  return lastResponse;
+}
+
+async function fetchWithRedirectRetries(url, headers, timeoutMs, retryCount) {
+  let lastResponse = null;
+  let lastError = null;
+
+  for (let retry = 0; retry <= retryCount; retry += 1) {
+    try {
+      const response = await fetchWithRedirects(url, headers, timeoutMs);
+      lastResponse = response;
+      if (!isRetryableStatus(response.status)) {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
+  }
+  throw lastError || new Error('upstream fetch failed');
+}
+
 export function proxyOptionsHandler() {
   return new Response(null, {
     status: 204,
@@ -82,6 +282,8 @@ export function proxyOptionsHandler() {
 }
 
 export async function proxyHandler(c) {
+  const { cacheMode, timeoutMs, retryCount } = getProxyRuntimeConfig(c);
+
   const targetUrlRaw = c.req.query('url') || c.req.query('u');
   const referer = c.req.query('referer') || 'https://megacloud.tv';
   const hostOverride = c.req.query('host');
@@ -161,33 +363,6 @@ export async function proxyHandler(c) {
     { referer: null, includeOrigin: false },
   ];
 
-  const fetchWithRedirects = async (url, headers, maxRedirects = 5) => {
-    let currentUrl = url;
-    let lastResponse = null;
-
-    for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
-      const response = await fetch(currentUrl, {
-        method: 'GET',
-        headers,
-        redirect: 'manual',
-      });
-
-      lastResponse = response;
-      if (response.status < 300 || response.status >= 400) {
-        return response;
-      }
-
-      const location = response.headers.get('location');
-      if (!location) {
-        return response;
-      }
-
-      currentUrl = toAbsoluteUrl(location, currentUrl);
-    }
-
-    return lastResponse;
-  };
-
   const seenAttempts = new Set();
   const uniqueAttempts = fallbackAttempts.filter((attempt) => {
     const key = attemptSignature(attempt);
@@ -214,28 +389,44 @@ export async function proxyHandler(c) {
     : uniqueAttempts;
 
   let upstream = null;
+  let upstreamError = null;
   for (const attempt of orderedAttempts) {
-    const response = await fetchWithRedirects(
-      targetUrl,
-      buildRequestHeaders(attempt.referer, attempt.includeOrigin)
-    );
+    try {
+      const response = await fetchWithRedirectRetries(
+        targetUrl,
+        buildRequestHeaders(attempt.referer, attempt.includeOrigin),
+        timeoutMs,
+        retryCount
+      );
 
-    upstream = response;
-    if (response.ok && targetHostKey) {
-      preferredAttemptByHost.set(targetHostKey, attemptSignature(attempt));
-      if (preferredAttemptByHost.size > 200) {
-        const oldestKey = preferredAttemptByHost.keys().next().value;
-        preferredAttemptByHost.delete(oldestKey);
+      upstream = response;
+      if (!isRetryableStatus(response.status) && response.ok && targetHostKey) {
+        preferredAttemptByHost.set(targetHostKey, attemptSignature(attempt));
+        if (preferredAttemptByHost.size > 200) {
+          const oldestKey = preferredAttemptByHost.keys().next().value;
+          preferredAttemptByHost.delete(oldestKey);
+        }
       }
-    }
-    if (response.ok || (response.status !== 403 && response.status !== 429)) {
-      break;
+      if (!isRetryableStatus(response.status)) {
+        break;
+      }
+    } catch (error) {
+      upstreamError = error;
     }
   }
 
-  if (!upstream || !upstream.ok) {
+  if (!upstream || !upstream.ok || isRetryableStatus(upstream.status)) {
+    if (!upstream && upstreamError) {
+      const isTimeout = upstreamError?.name === 'AbortError';
+      const status = isTimeout ? 504 : 502;
+      const reason = isTimeout ? 'timeout' : 'network';
+      return c.text(`upstream fetch failed (${reason})`, status, proxyCorsHeaders);
+    }
+
     const status = upstream?.status || 502;
-    return c.text(`upstream fetch failed (${status})`, status, proxyCorsHeaders);
+    const errorStatus = status === 204 ? 502 : status;
+    const reason = status === 204 ? '204 empty response' : String(status);
+    return c.text(`upstream fetch failed (${reason})`, errorStatus, proxyCorsHeaders);
   }
 
   const contentType = upstream.headers.get('content-type') || '';
@@ -247,22 +438,31 @@ export async function proxyHandler(c) {
     // Some upstreams incorrectly return octet-stream for WebVTT; force correct type for HTML track parsing.
     responseHeaders.set('Content-Type', 'text/vtt; charset=utf-8');
   }
-  const cacheControl = upstream.headers.get('cache-control');
+
+  const cacheControl = resolveCacheControl(
+    cacheMode,
+    targetUrl,
+    contentType,
+    upstream.headers.get('cache-control')
+  );
   if (cacheControl) {
     responseHeaders.set('Cache-Control', cacheControl);
   }
-  const contentLength = upstream.headers.get('content-length');
-  if (contentLength) {
-    responseHeaders.set('Content-Length', contentLength);
-  }
-  const contentRange = upstream.headers.get('content-range');
-  if (contentRange) {
-    responseHeaders.set('Content-Range', contentRange);
-  }
-  const acceptRanges = upstream.headers.get('accept-ranges');
-  if (acceptRanges) {
-    responseHeaders.set('Accept-Ranges', acceptRanges);
-  }
+
+  const headerPassThrough = [
+    'content-length',
+    'content-range',
+    'accept-ranges',
+    'etag',
+    'last-modified',
+  ];
+  headerPassThrough.forEach((headerName) => {
+    const value = upstream.headers.get(headerName);
+    if (value) {
+      responseHeaders.set(headerName, value);
+    }
+  });
+
   applyProxyCorsHeaders(responseHeaders);
 
   if (targetUrl.includes('.m3u8') || isManifestContentType(contentType)) {
