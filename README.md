@@ -1,4 +1,4 @@
-# hianime-API
+# DevzAnime-API
 
 Unofficial REST API for scraping anime data from hianime.
 
@@ -8,6 +8,15 @@ Unofficial REST API for scraping anime data from hianime.
 - Vercel Serverless Functions (free tier)
 - Cloudflare Workers (free tier)
 - Redis is optional and currently disabled in this branch
+
+## Production requirement (important)
+
+To fully use this API in production, you also need to deploy **AniProx**:
+
+- https://github.com/devz-on/AniProx
+
+`DevzAnime-API` provides anime metadata and stream source discovery, but production-grade playback usually requires a dedicated media proxy layer (for m3u8/segment/caption requests, upstream header handling, and cross-origin compatibility).  
+Use AniProx as that proxy layer in front of stream/caption/thumbnail media requests.
 
 ## Local setup
 
