@@ -21,6 +21,7 @@ import * as stream from '../modules/stream/index.js';
 import * as monthlySchedule from '../modules/schedule/monthlySchedule/index.js';
 import * as nextEpSchedule from '../modules/schedule/nextEpSchedule/index.js';
 import * as meta from '../modules/meta/index.js';
+import * as errorCollector from '../modules/errorCollector/index.js';
 import withTryCatch from '../utils/withTryCatch.js';
 
 const router = createRouter();
@@ -46,6 +47,7 @@ const routes = [
   monthlySchedule,
   nextEpSchedule,
   meta,
+  errorCollector,
   explore,
 ];
 

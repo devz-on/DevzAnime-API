@@ -1,4 +1,5 @@
 import { fail, success } from './response.js';
+import { collectError } from '../workers/errorCollector.worker.js';
 
 export default function withTryCatch(fn) {
   return async (c, next) => {
@@ -7,12 +8,31 @@ export default function withTryCatch(fn) {
 
       return success(c, result, null);
     } catch (error) {
-      console.error(error.message);
+      const statusCode = error?.statusCode || 500;
+      const errorReport = collectError({
+        source: 'route-handler',
+        reason: statusCode >= 500 ? 'handler-error' : 'request-error',
+        message: error?.message || 'route handler failed',
+        method: c.req.method,
+        path: c.req.path,
+        statusCode,
+        details: error?.details || null,
+        stack: error?.stack || null,
+      });
 
-      if (error.statusCode) {
-        return fail(c, error.message, error.statusCode, error.details);
+      console.error(error?.message || 'route handler failed');
+
+      const normalizedDetails =
+        error?.details && typeof error.details === 'object'
+          ? { ...error.details, errorId: errorReport?.id || null }
+          : errorReport?.id
+            ? { errorId: errorReport.id }
+            : error?.details || null;
+
+      if (error?.statusCode) {
+        return fail(c, error.message, error.statusCode, normalizedDetails);
       }
-      return fail(c, error.message, 500);
+      return fail(c, error?.message || 'internal server error', 500, normalizedDetails);
     }
   };
 }

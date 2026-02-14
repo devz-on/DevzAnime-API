@@ -6,6 +6,7 @@ import { fail } from '../utils/response.js';
 import { AppError } from '../utils/errors.js';
 import zodValidationHook from '../middlewares/hook.js';
 import { htmlAsString } from '../utils/htmlAsString.js';
+import { collectError } from '../workers/errorCollector.worker.js';
 
 function getEnvNumber(value, fallback) {
   const parsed = Number(value);
@@ -81,11 +82,34 @@ export default function createApp() {
     .get('/api/ping', (c) => c.text('pong'))
     .notFound((c) => fail(c, 'page not found', 404))
     .onError((err, c) => {
+      const statusCode = err instanceof AppError ? err.statusCode : 500;
+      const errorReport = collectError({
+        source: 'app-onerror',
+        reason: err instanceof AppError ? 'app-error' : 'unhandled-error',
+        message: err?.message || 'unexpected error',
+        method: c.req.method,
+        path: c.req.path,
+        statusCode,
+        details: err instanceof AppError ? err.details : null,
+        stack: err?.stack || null,
+      });
+
       if (err instanceof AppError) {
-        return fail(c, err.message, err.statusCode, err.details);
+        const details =
+          err.details && typeof err.details === 'object'
+            ? { ...err.details, errorId: errorReport?.id || null }
+            : errorReport?.id
+              ? { errorId: errorReport.id }
+              : err.details;
+        return fail(c, err.message, err.statusCode, details);
       }
       console.error('unexpacted Error :' + err.message);
-      return fail(c);
+      return fail(
+        c,
+        'internal server error',
+        500,
+        errorReport?.id ? { errorId: errorReport.id } : null
+      );
     });
 
   return app;
