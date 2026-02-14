@@ -42,7 +42,7 @@ Local URLs:
 Use `.env.example`:
 
 ```env
-ORIGIN=*
+ORIGIN=ani.devxjin.site,anime.devxjin.site,devzanime.vercel.app
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_LIMIT=100
 NODEJS_HELPERS=0

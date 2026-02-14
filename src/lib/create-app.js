@@ -30,7 +30,11 @@ function getRuntimeEnv() {
 
 function parseCorsOrigins(rawOrigin) {
   if (!rawOrigin) {
-    return '*';
+    return {
+      allowAll: true,
+      exactOrigins: [],
+      hosts: [],
+    };
   }
 
   const parsed = String(rawOrigin)
@@ -39,10 +43,76 @@ function parseCorsOrigins(rawOrigin) {
     .filter(Boolean);
 
   if (!parsed.length || parsed.includes('*')) {
+    return {
+      allowAll: true,
+      exactOrigins: [],
+      hosts: [],
+    };
+  }
+
+  const exactOrigins = new Set();
+  const hosts = new Set();
+
+  parsed.forEach((entry) => {
+    const normalized = entry.trim();
+    if (!normalized) {
+      return;
+    }
+
+    if (/^https?:\/\//i.test(normalized)) {
+      try {
+        const url = new URL(normalized);
+        exactOrigins.add(url.origin.toLowerCase());
+      } catch {
+        // ignore malformed entries
+      }
+      return;
+    }
+
+    const hostOnly = normalized
+      .replace(/^\*\./, '')
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/+$/, '')
+      .toLowerCase();
+
+    if (hostOnly) {
+      hosts.add(hostOnly);
+    }
+  });
+
+  return {
+    allowAll: false,
+    exactOrigins: [...exactOrigins],
+    hosts: [...hosts],
+  };
+}
+
+function resolveCorsOrigin(origin, corsConfig) {
+  if (corsConfig.allowAll) {
     return '*';
   }
 
-  return parsed;
+  if (!origin) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(origin);
+    const requestOrigin = parsed.origin.toLowerCase();
+    const requestHost = parsed.hostname.toLowerCase();
+
+    if (corsConfig.exactOrigins.includes(requestOrigin)) {
+      return origin;
+    }
+
+    if (corsConfig.hosts.includes(requestHost)) {
+      return origin;
+    }
+  } catch {
+    return '';
+  }
+
+  return '';
 }
 
 export function createRouter() {
@@ -57,9 +127,9 @@ export default function createApp() {
   const origins = parseCorsOrigins(env.ORIGIN);
 
   const corsConf = cors({
-    origin: origins,
+    origin: (origin) => resolveCorsOrigin(origin, origins),
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: '*',
+    allowHeaders: ['Content-Type', 'Authorization', 'x-error-collector-token', 'Accept'],
   });
   const rateLimiterConf = rateLimiter({
     windowMs: getEnvNumber(env.RATE_LIMIT_WINDOW_MS, 60 * 1000),
@@ -74,6 +144,7 @@ export default function createApp() {
 
   const app = createRouter()
     .use(corsConf)
+    .options('*', corsConf)
     .use(rateLimiterConf)
     .use('/api/v1/*', logger())
     .get('/', (c) => c.html(htmlAsString))
