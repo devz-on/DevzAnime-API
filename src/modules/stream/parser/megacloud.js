@@ -75,10 +75,7 @@ export default async function megacloud({ selectedServer, id }, retry = 0) {
   const epID = extractEpisodeId(id);
 
   try {
-    const [sourcesResponse, key] = await Promise.all([
-      fetchAjaxSources(selectedServer.id),
-      getDecryptionKey(),
-    ]);
+    const sourcesResponse = await fetchAjaxSources(selectedServer.id);
 
     const { baseUrl, sourceId } = parseAjaxLink(sourcesResponse.link);
 
@@ -87,7 +84,7 @@ export default async function megacloud({ selectedServer, id }, retry = 0) {
     let usedFallback = false;
 
     try {
-      ({ sources: decrypted, rawData } = await decryptPrimarySource(baseUrl, sourceId, key));
+      ({ sources: decrypted, rawData } = await decryptPrimarySource(baseUrl, sourceId));
     } catch {
       ({ sources: decrypted, rawData } = await getFallbackSource(
         epID,
@@ -128,8 +125,18 @@ const fetchAjaxSources = async (serverId) => {
 };
 
 const parseAjaxLink = (link) => {
-  const sourceId = /\/([^/?]+)\?/.exec(link)?.[1];
-  const baseUrl = link.match(/^(https?:\/\/[^/]+(?:\/[^/]+){3})/)?.[1];
+  let parsed;
+  try {
+    parsed = new URL(link);
+  } catch {
+    throw new Error('Invalid ajax link format');
+  }
+
+  const pathnameParts = parsed.pathname.split('/').filter(Boolean);
+  const sourceId = pathnameParts.at(-1);
+  const basePathParts = pathnameParts.slice(0, -1);
+  const baseUrl =
+    sourceId && basePathParts.length > 0 ? `${parsed.origin}/${basePathParts.join('/')}` : null;
 
   if (!sourceId || !baseUrl) {
     throw new Error('Invalid ajax link format');
@@ -138,7 +145,7 @@ const parseAjaxLink = (link) => {
   return { sourceId, baseUrl };
 };
 
-const decryptPrimarySource = async (baseUrl, sourceId, key) => {
+const decryptPrimarySource = async (baseUrl, sourceId) => {
   const token = await extractToken(`${baseUrl}/${sourceId}?k=1&autoPlay=0&oa=0&asi=1`);
   if (!token) throw new Error('Token extraction failed');
 
@@ -149,12 +156,29 @@ const decryptPrimarySource = async (baseUrl, sourceId, key) => {
     },
   });
 
-  const encrypted = data?.sources;
-  if (!encrypted) throw new Error('Missing encrypted sources');
+  const sourcePayload = data?.sources;
+  if (!sourcePayload) throw new Error('Missing sources payload');
 
-  const sources = typeof encrypted === 'string' ? decryptAES(encrypted, key) : encrypted;
+  const sources = await normalizeSources(sourcePayload);
 
   return { sources, rawData: data };
+};
+
+const normalizeSources = async (payload) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (typeof payload === 'string') {
+    const key = await getDecryptionKey();
+    return decryptAES(payload, key);
+  }
+
+  if (payload && typeof payload === 'object' && typeof payload.file === 'string') {
+    return [payload];
+  }
+
+  throw new Error('Unsupported sources format');
 };
 
 const decryptAES = (encrypted, key) => {
